@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Nico Digitals Content Engine
+*_output/
+*_clips/
+*_meta/
+*_transcript.json
+blaze_face_short_range.tflite
