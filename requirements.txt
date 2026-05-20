@@ -1,0 +1,19 @@
+# Nico Digitals Engine
+# Install: pip install -r requirements.txt
+
+# Transcription
+faster-whisper
+
+# CLI
+questionary
+tqdm
+
+# Environment variables
+python-dotenv
+
+# Auto silence cutting
+auto-editor
+
+# Video processing (resizer — future use)
+# mediapipe
+# opencv-python
