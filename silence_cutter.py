@@ -3,45 +3,57 @@ import subprocess
 import os
 
 # =========================
-# PRESETS
+# CONFIG
 # =========================
 
+FORMATS = {".mp4", ".mov", ".avi", ".mkv"}
+
 PRESETS = {
-    "1": {"nombre": "Podcast",      "descripcion": "Pausas naturales, ritmo conservado",    "margin": "0.4sec", "threshold": "0.06"},
-    "2": {"nombre": "Talking-Head", "descripcion": "Corte estándar para cámara frontal",    "margin": "0.2sec", "threshold": "0.04"},
-    "3": {"nombre": "Short-form",   "descripcion": "Corte agresivo para Reels / TikTok",    "margin": "0.1sec", "threshold": "0.03"},
+    "1": {"name": "Podcast",      "description": "Natural pauses, preserved rhythm",      "margin": "0.4sec", "threshold": "0.06"},
+    "2": {"name": "Talking-Head", "description": "Standard cut for front-facing camera",  "margin": "0.2sec", "threshold": "0.04"},
+    "3": {"name": "Short-form",   "description": "Aggressive cut for Reels / TikTok",     "margin": "0.1sec", "threshold": "0.03"},
 }
 
 # =========================
-# FUNCIONES
+# FUNCTIONS
 # =========================
 
-def limpiar_path(raw: str) -> Path:
+def clean_path(raw: str) -> Path:
     raw = raw.strip().replace('"', "").replace("'", "")
     if raw.startswith("/") and len(raw) > 2 and raw[2] == "/":
         raw = f"{raw[1].upper()}:{raw[2:]}"
     return Path(raw)
 
 
-def mostrar_presets():
-    print("\n  Presets disponibles:")
+def resolve_files(path: Path) -> list[Path]:
+    """Returns all video files in a folder, or a single file."""
+    if path.is_dir():
+        return sorted([f for f in path.iterdir() if f.suffix.lower() in FORMATS])
+    elif path.suffix.lower() in FORMATS:
+        return [path]
+    return []
+
+
+def show_presets():
+    print("\n  Available presets:")
     for key, p in PRESETS.items():
-        print(f"  [{key}] {p['nombre']} — {p['descripcion']}")
+        print(f"  [{key}] {p['name']} — {p['description']}")
 
 
 def procesar(video_path: Path, preset: dict, clip_sequence: bool, output_folder: Path = None) -> Path:
     """
-    Corre auto-editor sobre video_path con el preset dado.
-    Si clip_sequence=True exporta clips separados en una subcarpeta.
-    Si output_folder se provee, los archivos van ahí; si no, al lado del video.
-    Retorna el path del output (carpeta o archivo).
+    Runs auto-editor on video_path with the given preset.
+    If clip_sequence=True, exports each segment as a separate clip in a subfolder.
+    If output_folder is provided, files go there; otherwise next to the video.
+    Returns the output path (folder or file).
     """
-    destino = output_folder if output_folder else video_path.parent
-    destino.mkdir(parents=True, exist_ok=True)
+    dest = output_folder if output_folder else video_path.parent
+    dest.mkdir(parents=True, exist_ok=True)
     os.chdir(video_path.parent)
 
     if clip_sequence:
-        antes = set(video_path.parent.glob("*.mp4"))
+        # Snapshot of existing MP4s before running auto-editor
+        before = set(video_path.parent.glob("*.mp4"))
 
         cmd = [
             "auto-editor", str(video_path),
@@ -50,26 +62,27 @@ def procesar(video_path: Path, preset: dict, clip_sequence: bool, output_folder:
             "--export", "clip-sequence",
         ]
 
-        print(f"\n🎬 Procesando: {video_path.name}", flush=True)
-        print(f"   Preset: {preset['nombre']} | margin: {preset['margin']} | threshold: {preset['threshold']}", flush=True)
-        print(f"   Modo: clips separados\n", flush=True)
+        print(f"\n🎬 Processing: {video_path.name}", flush=True)
+        print(f"   Preset: {preset['name']} | margin: {preset['margin']} | threshold: {preset['threshold']}", flush=True)
+        print(f"   Mode: clip sequence\n", flush=True)
 
         subprocess.run(cmd, check=True)
 
-        despues      = set(video_path.parent.glob("*.mp4"))
-        nuevos       = despues - antes
-        clips_folder = destino / f"{video_path.stem}_clips"
+        # Detect new files created by auto-editor and move them to dest
+        after        = set(video_path.parent.glob("*.mp4"))
+        new_clips    = after - before
+        clips_folder = dest / f"{video_path.stem}_clips"
         clips_folder.mkdir(exist_ok=True)
 
-        for clip in sorted(nuevos):
+        for clip in sorted(new_clips):
             clip.rename(clips_folder / clip.name)
             print(f"   → {clip.name}", flush=True)
 
-        print(f"\n   {len(nuevos)} clips → {clips_folder.name}/", flush=True)
+        print(f"\n   {len(new_clips)} clips → {clips_folder.name}/", flush=True)
         return clips_folder
 
     else:
-        output_path = destino / f"{video_path.stem}_{preset['nombre']}.mp4"
+        output_path = dest / f"{video_path.stem}_{preset['name']}.mp4"
 
         cmd = [
             "auto-editor", str(video_path),
@@ -78,9 +91,9 @@ def procesar(video_path: Path, preset: dict, clip_sequence: bool, output_folder:
             "--output", str(output_path),
         ]
 
-        print(f"\n🎬 Procesando: {video_path.name}", flush=True)
-        print(f"   Preset: {preset['nombre']} | margin: {preset['margin']} | threshold: {preset['threshold']}", flush=True)
-        print(f"   Modo: video completo → {output_path.name}\n", flush=True)
+        print(f"\n🎬 Processing: {video_path.name}", flush=True)
+        print(f"   Preset: {preset['name']} | margin: {preset['margin']} | threshold: {preset['threshold']}", flush=True)
+        print(f"   Mode: single file → {output_path.name}\n", flush=True)
 
         subprocess.run(cmd, check=True)
         return output_path
@@ -95,45 +108,53 @@ if __name__ == "__main__":
     while True:
 
         print("\n==============================")
-        print(f" Silence Cutter")
+        print(" Silence Cutter")
         print("==============================")
-        mostrar_presets()
+        show_presets()
 
-        opcion = input("\nElegí un preset (1/2/3) o escribí 'exit': ").strip()
+        option = input("\nChoose a preset (1/2/3) or type 'exit': ").strip()
 
-        if opcion.lower() == "exit":
-            print("\n👋 Cerrando programa...")
+        if option.lower() == "exit":
+            print("\n👋 Closing...")
             break
 
-        if opcion not in PRESETS:
-            print("\n❌ Opción inválida. Escribí 1, 2 o 3.")
+        if option not in PRESETS:
+            print("\n❌ Invalid option. Type 1, 2 or 3.")
             continue
 
-        preset = PRESETS[opcion]
+        preset = PRESETS[option]
 
-        modo = input("\n¿Output? [1] Video completo  [2] Clips separados: ").strip()
-        if modo not in ["1", "2"]:
-            print("\n❌ Opción inválida. Escribí 1 o 2.")
+        mode = input("\nOutput? [1] Single file  [2] Clip sequence: ").strip()
+        if mode not in ["1", "2"]:
+            print("\n❌ Invalid option. Type 1 or 2.")
             continue
 
-        clip_sequence = modo == "2"
+        clip_sequence = mode == "2"
 
-        video_input = input("\nArrastrá el video acá: ").strip()
-        video_path  = limpiar_path(video_input)
+        raw_input  = input("\nDrag a video or folder here: ").strip()
+        input_path = clean_path(raw_input)
 
-        if not video_path.exists():
-            print(f"\n❌ Archivo no encontrado: {video_path}")
+        if not input_path.exists():
+            print(f"\n❌ Not found: {input_path}")
             continue
 
-        if video_path.suffix.lower() not in [".mp4", ".mov", ".avi", ".mkv"]:
-            print("\n❌ Formato no soportado.")
+        files = resolve_files(input_path)
+
+        if not files:
+            print("\n❌ No compatible video files found.")
             continue
 
-        try:
-            output = procesar(video_path, preset, clip_sequence)
-            print(f"\n✅ Listo.")
-            print(f"📁 {output}")
-        except subprocess.CalledProcessError:
-            print("\n❌ Error ejecutando auto-editor.")
-        except FileNotFoundError:
-            print("\n❌ auto-editor no encontrado. Instalalo con: pip install auto-editor")
+        if input_path.is_dir():
+            print(f"\n📁 Folder detected — {len(files)} file(s) to process.", flush=True)
+
+        for i, video_path in enumerate(files, start=1):
+            if len(files) > 1:
+                print(f"\n[{i}/{len(files)}]", flush=True)
+            try:
+                output = procesar(video_path, preset, clip_sequence)
+                print(f"\n✅ Done.")
+                print(f"📁 {output}")
+            except subprocess.CalledProcessError:
+                print("\n❌ auto-editor failed.")
+            except FileNotFoundError:
+                print("\n❌ auto-editor not found. Install it with: pip install auto-editor")

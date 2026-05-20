@@ -16,81 +16,92 @@ GEMINI_URL     = (
     "gemini-2.5-flash:generateContent?key=" + GEMINI_API_KEY
 )
 
+FORMATS = {".json"}
+
 PLATAFORMAS = {
     "instagram": {
-        "nombre":   "Instagram",
-        "tono":     "cercano, aspiracional, uso de emojis moderado",
-        "caption":  "150-300 caracteres",
-        "hashtags": "10-15 hashtags mixtos (nicho + masivos)",
-        "cta":      "guardá este video, seguinos, comentá tu opinión",
+        "name":     "Instagram",
+        "tone":     "close, aspirational, moderate emoji use",
+        "caption":  "150-300 characters",
+        "hashtags": "10-15 mixed hashtags (niche + broad)",
+        "cta":      "save this video, follow us, comment your opinion",
     },
     "tiktok": {
-        "nombre":   "TikTok",
-        "tono":     "directo, energético, coloquial, gancho fuerte",
-        "caption":  "100-150 caracteres",
-        "hashtags": "5-8 hashtags trending y de nicho",
-        "cta":      "seguime para más, comenta si te pasó, duet esto",
+        "name":     "TikTok",
+        "tone":     "direct, energetic, colloquial, strong hook",
+        "caption":  "100-150 characters",
+        "hashtags": "5-8 trending and niche hashtags",
+        "cta":      "follow for more, comment if this happened to you, duet this",
     },
     "youtube_shorts": {
-        "nombre":   "YouTube Shorts",
-        "tono":     "informativo pero dinámico, título clickbait honesto",
-        "caption":  "100-200 caracteres",
-        "hashtags": "3-5 hashtags relevantes",
-        "cta":      "suscribite, mirá el video completo, dejá un like",
+        "name":     "YouTube Shorts",
+        "tone":     "informative but dynamic, honest clickbait title",
+        "caption":  "100-200 characters",
+        "hashtags": "3-5 relevant hashtags",
+        "cta":      "subscribe, watch the full video, leave a like",
     },
     "linkedin": {
-        "nombre":   "LinkedIn",
-        "tono":     "profesional, reflexivo, agrega valor, sin emojis excesivos",
-        "caption":  "200-400 caracteres con saltos de línea para legibilidad",
-        "hashtags": "3-5 hashtags profesionales",
-        "cta":      "¿qué pensás?, compartí si te aportó valor, seguime",
+        "name":     "LinkedIn",
+        "tone":     "professional, reflective, adds value, minimal emojis",
+        "caption":  "200-400 characters with line breaks for readability",
+        "hashtags": "3-5 professional hashtags",
+        "cta":      "what do you think?, share if this added value, follow me",
     },
 }
 
 # =========================
-# FUNCIONES
+# FUNCTIONS
 # =========================
 
-def limpiar_path(raw: str) -> Path:
+def clean_path(raw: str) -> Path:
     raw = raw.strip().replace('"', "").replace("'", "")
     if raw.startswith("/") and len(raw) > 2 and raw[2] == "/":
         raw = f"{raw[1].upper()}:{raw[2:]}"
     return Path(raw)
 
 
-def cargar_transcripcion(json_path: Path) -> str:
+def resolve_files(path: Path) -> list[Path]:
+    """Returns all JSON files in a folder, or a single file."""
+    if path.is_dir():
+        return sorted([f for f in path.iterdir() if f.suffix.lower() in FORMATS])
+    elif path.suffix.lower() in FORMATS:
+        return [path]
+    return []
+
+
+def load_transcript(json_path: Path) -> str:
     with open(json_path, "r", encoding="utf-8") as f:
         words = json.load(f)
     return " ".join(w["word"] for w in words).strip()
 
 
-def generar_copy(transcripcion: str, plataforma: dict) -> str:
-    prompt = f"""Sos un experto en marketing digital y copywriting para redes sociales.
+def generate_copy(transcript: str, platform: dict) -> str:
+    prompt = f"""You are an expert in digital marketing and social media copywriting.
 
-Te doy la transcripción de un video y tu tarea es generar el copy completo para {plataforma['nombre']}.
+I'm giving you a video transcript and your task is to generate the full copy for {platform['name']}.
 
-TRANSCRIPCIÓN:
-{transcripcion}
+TRANSCRIPT:
+{transcript}
 
-INSTRUCCIONES PARA {plataforma['nombre'].upper()}:
-- Tono: {plataforma['tono']}
-- Caption: {plataforma['caption']}
-- Hashtags: {plataforma['hashtags']}
-- CTA sugerido: {plataforma['cta']}
+INSTRUCTIONS FOR {platform['name'].upper()}:
+- Tone: {platform['tone']}
+- Caption length: {platform['caption']}
+- Hashtags: {platform['hashtags']}
+- Suggested CTA: {platform['cta']}
 
-Respondé ÚNICAMENTE con el siguiente formato, sin explicaciones ni markdown:
+Reply ONLY with the following format, no explanations or markdown:
 
-TÍTULO:
-[título optimizado para la plataforma]
+TITLE:
+[platform-optimized title]
 
 HOOK:
-[primera línea que para el scroll]
+[first line that stops the scroll]
 
 CAPTION:
-[caption completa lista para copiar y pegar]
+[full caption ready to copy and paste]
 
 HASHTAGS:
-[hashtags listos para copiar y pegar]
+[hashtags ready to copy and paste]
 
 CTA:
 [call to action]
@@ -113,37 +124,37 @@ CTA:
     return data["candidates"][0]["content"]["parts"][0]["text"].strip()
 
 
-def generar_meta(json_path: Path, plataformas_keys: list, output_folder: Path) -> bool:
+def generar_meta(json_path: Path, platform_keys: list, output_folder: Path) -> bool:
     """
-    Genera copy para las plataformas indicadas desde json_path.
-    Guarda los .txt en output_folder/meta/.
-    Retorna True si no hubo errores.
+    Generates copy for the given platforms from json_path.
+    Saves .txt files in output_folder/meta/.
+    Returns True if no errors occurred.
     """
-    transcripcion = cargar_transcripcion(json_path)
-    meta_folder   = output_folder / "meta"
+    transcript  = load_transcript(json_path)
+    meta_folder = output_folder / "meta"
     meta_folder.mkdir(parents=True, exist_ok=True)
-    errores = []
+    errors = []
 
-    for key in plataformas_keys:
-        plataforma = PLATAFORMAS[key]
-        print(f"\n🤖 Generando copy para {plataforma['nombre']}...", flush=True)
+    for key in platform_keys:
+        platform = PLATAFORMAS[key]
+        print(f"\n🤖 Generating copy for {platform['name']}...", flush=True)
         try:
-            copy = generar_copy(transcripcion, plataforma)
+            copy = generate_copy(transcript, platform)
             out  = meta_folder / f"{key}.txt"
             out.write_text(copy, encoding="utf-8")
             print(f"   ✅ {out.name}", flush=True)
         except urllib.error.HTTPError as e:
-            print(f"   ❌ Error API ({e.code}): {e.reason}", flush=True)
-            errores.append(plataforma['nombre'])
+            print(f"   ❌ API error ({e.code}): {e.reason}", flush=True)
+            errors.append(platform["name"])
         except Exception as e:
             print(f"   ❌ Error: {e}", flush=True)
-            errores.append(plataforma['nombre'])
+            errors.append(platform["name"])
 
-    generados = len(plataformas_keys) - len(errores)
-    print(f"\n✅ {generados}/{len(plataformas_keys)} copies generados.", flush=True)
-    if errores:
-        print(f"⚠️  Fallaron: {', '.join(errores)}", flush=True)
-    return len(errores) == 0
+    generated = len(platform_keys) - len(errors)
+    print(f"\n✅ {generated}/{len(platform_keys)} copies generated.", flush=True)
+    if errors:
+        print(f"⚠️  Failed: {', '.join(errors)}", flush=True)
+    return len(errors) == 0
 
 
 # =========================
@@ -152,41 +163,55 @@ def generar_meta(json_path: Path, plataformas_keys: list, output_folder: Path) -
 
 if __name__ == "__main__":
 
+    import questionary
+
     while True:
 
         print("\n==============================", flush=True)
-        print(f" Meta Generator",  flush=True)
+        print(" Meta Generator",               flush=True)
         print("==============================", flush=True)
 
-        json_input = input("\nArrastrá el JSON de transcripción acá o escribí 'exit': ").strip()
-
-        if json_input.lower() == "exit":
-            print("\n👋 Cerrando programa...")
-            break
-
-        json_path = limpiar_path(json_input)
-
-        if not json_path.exists():
-            print(f"\n❌ Archivo no encontrado: {json_path}", flush=True)
-            continue
-
-        if json_path.suffix.lower() != ".json":
-            print("\n❌ El archivo debe ser un .json generado por transcribe.py.", flush=True)
-            continue
-
-        import questionary
-        seleccion = questionary.checkbox(
-            "¿Para qué plataformas generamos copy?",
-            choices=[p["nombre"] for p in PLATAFORMAS.values()]
+        # Platform selection
+        selection = questionary.checkbox(
+            "Generate copy for which platforms?",
+            choices=[p["name"] for p in PLATAFORMAS.values()]
         ).ask()
 
-        if not seleccion:
-            print("\n⚠️  No seleccionaste ninguna plataforma.", flush=True)
+        if not selection:
+            print("\n⚠️  No platforms selected.", flush=True)
             continue
 
-        keys_elegidos = [k for k, v in PLATAFORMAS.items() if v["nombre"] in seleccion]
+        platform_keys = [k for k, v in PLATAFORMAS.items() if v["name"] in selection]
 
-        print(f"\n📄 Cargando: {json_path.name}", flush=True)
-        output_folder = json_path.parent / f"{json_path.stem}_meta"
-        generar_meta(json_path, keys_elegidos, output_folder)
-        print(f"📁 {output_folder / 'meta'}", flush=True)
+        # Input
+        raw_input  = input("\nDrag a JSON file or folder here: ").strip()
+
+        input_path = clean_path(raw_input)
+
+        if not input_path.exists():
+            print(f"\n❌ Not found: {input_path}", flush=True)
+            continue
+
+        files = resolve_files(input_path)
+
+        if not files:
+            print("\n❌ No compatible JSON files found.", flush=True)
+            continue
+
+        if input_path.is_dir():
+            print(f"\n📁 Folder detected — {len(files)} file(s) to process.", flush=True)
+
+        for i, json_path in enumerate(files, start=1):
+            if len(files) > 1:
+                print(f"\n[{i}/{len(files)}]", flush=True)
+            print(f"\n📄 Loading: {json_path.name}", flush=True)
+            output_folder = json_path.parent / f"{json_path.stem}_meta"
+            generar_meta(json_path, platform_keys, output_folder)
+            print(f"📁 {output_folder / 'meta'}", flush=True)
+
+        print(f"\n✅ Done. {len(files)} file(s) processed.", flush=True)
+
+        again = input("\nProcess another file? (Enter to continue / 'exit' to quit): ").strip().lower()
+        if again == "exit":
+            print("\n👋 Closing...")
+            break

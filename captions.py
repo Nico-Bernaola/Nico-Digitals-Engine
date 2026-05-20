@@ -2,51 +2,64 @@ from pathlib import Path
 import json
 
 # =========================
-# PRESETS
+# CONFIG
 # =========================
 
+FORMATS = {".json"}
+
 PRESETS = {
-    "1": {"nombre": "MrBeast", "palabras": 1,    "descripcion": "1 palabra por caption"},
-    "2": {"nombre": "Hormozi", "palabras": 3,    "descripcion": "2-3 palabras por caption"},
-    "3": {"nombre": "Podcast", "palabras": 5,    "descripcion": "4-5 palabras por caption"},
-    "4": {"nombre": "Custom",  "palabras": None, "descripcion": "Elegís la cantidad"},
+    "1": {"name": "MrBeast", "words": 1,    "description": "1 word per caption"},
+    "2": {"name": "Hormozi", "words": 3,    "description": "2-3 words per caption"},
+    "3": {"name": "Podcast", "words": 5,    "description": "4-5 words per caption"},
+    "4": {"name": "Custom",  "words": None, "description": "You choose the amount"},
 }
 
 # =========================
-# FUNCIONES
+# FUNCTIONS
 # =========================
 
-def limpiar_path(raw: str) -> Path:
+def clean_path(raw: str) -> Path:
     raw = raw.strip().replace('"', "").replace("'", "")
     if raw.startswith("/") and len(raw) > 2 and raw[2] == "/":
         raw = f"{raw[1].upper()}:{raw[2:]}"
     return Path(raw)
 
 
-def mostrar_presets():
-    print("\n  Presets:")
+def resolve_files(path: Path) -> list[Path]:
+    """Returns all JSON files in a folder, or a single file."""
+    if path.is_dir():
+        return sorted([f for f in path.iterdir() if f.suffix.lower() in FORMATS])
+    elif path.suffix.lower() in FORMATS:
+        return [path]
+    return []
+
+
+def show_presets():
+    print("\n  Available presets:")
     for key, p in PRESETS.items():
-        print(f"  [{key}] {p['nombre']} — {p['descripcion']}")
+        print(f"  [{key}] {p['name']} — {p['description']}")
 
 
-def cargar_palabras(json_path: Path) -> list:
+def load_words(json_path: Path) -> list:
     with open(json_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
-def agrupar_palabras(words: list, n: int) -> list[dict]:
-    grupos = []
+def group_words(words: list, n: int) -> list[dict]:
+    """Groups words into blocks of n — each block is one caption."""
+    groups = []
     for i in range(0, len(words), n):
-        bloque = words[i:i + n]
-        grupos.append({
-            "start": bloque[0]["start"],
-            "end":   bloque[-1]["end"],
-            "text":  " ".join(w["word"] for w in bloque).strip(),
+        block = words[i:i + n]
+        groups.append({
+            "start": block[0]["start"],
+            "end":   block[-1]["end"],
+            "text":  " ".join(w["word"] for w in block).strip(),
         })
-    return grupos
+    return groups
 
 
-def formato_srt_time(seconds: float) -> str:
+def format_srt_time(seconds: float) -> str:
+    """Converts seconds to SRT format: HH:MM:SS,mmm"""
     h  = int(seconds // 3600)
     m  = int((seconds % 3600) // 60)
     s  = int(seconds % 60)
@@ -54,30 +67,30 @@ def formato_srt_time(seconds: float) -> str:
     return f"{h:02}:{m:02}:{s:02},{ms:03}"
 
 
-def generar_srt(grupos: list) -> str:
-    lineas = []
-    for i, g in enumerate(grupos, start=1):
-        lineas.append(str(i))
-        lineas.append(f"{formato_srt_time(g['start'])} --> {formato_srt_time(g['end'])}")
-        lineas.append(g["text"])
-        lineas.append("")
-    return "\n".join(lineas)
+def build_srt(groups: list) -> str:
+    lines = []
+    for i, g in enumerate(groups, start=1):
+        lines.append(str(i))
+        lines.append(f"{format_srt_time(g['start'])} --> {format_srt_time(g['end'])}")
+        lines.append(g["text"])
+        lines.append("")
+    return "\n".join(lines)
 
 
 def generar_captions(json_path: Path, preset: dict, output_path: Path = None) -> Path:
     """
-    Genera un .SRT desde json_path con el preset dado.
-    Guarda en output_path si se provee, si no al lado del JSON.
-    Retorna el path del .SRT generado.
+    Generates a .SRT file from json_path using the given preset.
+    Saves to output_path if provided, otherwise next to the JSON.
+    Returns the path of the generated .SRT.
     """
-    words  = cargar_palabras(json_path)
-    grupos = agrupar_palabras(words, preset["palabras"])
-    srt    = generar_srt(grupos)
+    words  = load_words(json_path)
+    groups = group_words(words, preset["words"])
+    srt    = build_srt(groups)
 
-    dest = output_path if output_path else json_path.with_name(f"{json_path.stem}_{preset['nombre']}.srt")
+    dest = output_path if output_path else json_path.with_name(f"{json_path.stem}_{preset['name']}.srt")
     dest.write_text(srt, encoding="utf-8")
 
-    print(f"   {len(words)} palabras → {len(grupos)} captions", flush=True)
+    print(f"   {len(words)} words → {len(groups)} captions", flush=True)
     print(f"   ✅ {dest.name}", flush=True)
     return dest
 
@@ -91,44 +104,54 @@ if __name__ == "__main__":
     while True:
 
         print("\n==============================")
-        print(f" Captions Generator — SRT")
+        print(" Captions Generator — SRT")
         print("==============================")
-        mostrar_presets()
+        show_presets()
 
-        opcion = input("\nElegí un preset (1/2/3/4) o escribí 'exit': ").strip()
+        option = input("\nChoose a preset (1/2/3/4) or type 'exit': ").strip()
 
-        if opcion.lower() == "exit":
-            print("\n👋 Cerrando programa...")
+        if option.lower() == "exit":
+            print("\n👋 Closing...")
             break
 
-        if opcion not in PRESETS:
-            print("\n❌ Opción inválida.")
+        if option not in PRESETS:
+            print("\n❌ Invalid option.")
             continue
 
-        preset = PRESETS[opcion]
+        preset = PRESETS[option]
 
-        if preset["palabras"] is None:
+        # Custom: ask for word count
+        if preset["words"] is None:
             try:
-                n = int(input("¿Cuántas palabras por caption? ").strip())
+                n = int(input("How many words per caption? ").strip())
                 if n < 1:
                     raise ValueError
             except ValueError:
-                print("\n❌ Ingresá un número entero mayor a 0.")
+                print("\n❌ Enter a positive integer.")
                 continue
-            preset = {**preset, "palabras": n}
+            preset = {**preset, "words": n}
 
-        json_input = input("\nArrastrá el JSON de transcripción acá: ").strip()
-        json_path  = limpiar_path(json_input)
+        raw_input  = input("\nDrag a JSON file or folder here: ").strip()
+        input_path = clean_path(raw_input)
 
-        if not json_path.exists():
-            print(f"\n❌ Archivo no encontrado: {json_path}")
+        if not input_path.exists():
+            print(f"\n❌ Not found: {input_path}")
             continue
 
-        if json_path.suffix.lower() != ".json":
-            print("\n❌ El archivo debe ser un .json generado por transcribe.py.")
+        files = resolve_files(input_path)
+
+        if not files:
+            print("\n❌ No compatible JSON files found.")
             continue
 
-        print(f"\n📄 Cargando: {json_path.name}")
-        output = generar_captions(json_path, preset)
-        print(f"\n✅ Listo.")
-        print(f"📁 {output}")
+        if input_path.is_dir():
+            print(f"\n📁 Folder detected — {len(files)} file(s) to process.", flush=True)
+
+        for i, json_path in enumerate(files, start=1):
+            if len(files) > 1:
+                print(f"\n[{i}/{len(files)}]", flush=True)
+            print(f"\n📄 Loading: {json_path.name}", flush=True)
+            output = generar_captions(json_path, preset)
+            print(f"📁 {output}", flush=True)
+
+        print(f"\n✅ Done. {len(files)} file(s) processed.", flush=True)

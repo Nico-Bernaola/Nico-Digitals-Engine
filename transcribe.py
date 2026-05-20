@@ -7,40 +7,41 @@ import json
 # =========================
 
 MODEL_SIZE = "small"
-FORMATOS   = {".mp4", ".mov", ".avi", ".mkv", ".mp3", ".wav"}
+FORMATS    = {".mp4", ".mov", ".avi", ".mkv", ".mp3", ".wav"}
 
 # =========================
-# FUNCIONES
+# FUNCTIONS
 # =========================
 
-def limpiar_path(raw: str) -> Path:
+def clean_path(raw: str) -> Path:
     raw = raw.strip().replace('"', "").replace("'", "")
     if raw.startswith("/") and len(raw) > 2 and raw[2] == "/":
         raw = f"{raw[1].upper()}:{raw[2:]}"
     return Path(raw)
 
 
-def resolver_archivos(path: Path) -> list[Path]:
+def resolve_files(path: Path) -> list[Path]:
+    """Returns all media files in a folder, or a single file."""
     if path.is_dir():
-        return sorted([f for f in path.iterdir() if f.suffix.lower() in FORMATOS])
-    elif path.suffix.lower() in FORMATOS:
+        return sorted([f for f in path.iterdir() if f.suffix.lower() in FORMATS])
+    elif path.suffix.lower() in FORMATS:
         return [path]
     return []
 
 
 def transcribir(video_path: Path, model: "WhisperModel", output_path: Path = None) -> Path:
     """
-    Transcribe video_path con el modelo dado.
-    Guarda el JSON en output_path si se provee, si no al lado del video.
-    Retorna el path del JSON generado.
+    Transcribes video_path using the given Whisper model.
+    Saves the JSON to output_path if provided, otherwise next to the video.
+    Returns the path of the generated JSON.
     """
     print(f"\n📄 {video_path.name}", flush=True)
 
     segments, info = model.transcribe(str(video_path), beam_size=5, word_timestamps=True)
-    print(f"   Idioma: {info.language} ({info.language_probability:.0%}) | Duración: {info.duration:.2f}s", flush=True)
+    print(f"   Language: {info.language} ({info.language_probability:.0%}) | Duration: {info.duration:.2f}s", flush=True)
 
     pbar = tqdm(
-        total=info.duration, unit="s", desc="   Procesando",
+        total=info.duration, unit="s", desc="   Processing",
         bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]'
     )
 
@@ -62,15 +63,16 @@ def transcribir(video_path: Path, model: "WhisperModel", output_path: Path = Non
     with open(dest, "w", encoding="utf-8") as f:
         json.dump(words, f, ensure_ascii=False, indent=2)
 
-    print(f"   ✅ {len(words)} palabras → {dest.name}", flush=True)
+    print(f"   ✅ {len(words)} words → {dest.name}", flush=True)
     return dest
 
 
 def cargar_modelo() -> "WhisperModel":
+    """Loads the Whisper model. Called once per session (lazy loading)."""
     from faster_whisper import WhisperModel
-    print(f"\n🔄 Cargando modelo Whisper {MODEL_SIZE}...", flush=True)
+    print(f"\n🔄 Loading Whisper model ({MODEL_SIZE})...", flush=True)
     model = WhisperModel(MODEL_SIZE, device="cpu", compute_type="int8")
-    print("   Modelo listo.\n", flush=True)
+    print("   Model ready.\n", flush=True)
     return model
 
 
@@ -80,7 +82,7 @@ def cargar_modelo() -> "WhisperModel":
 
 if __name__ == "__main__":
 
-    model = None  # lazy loading
+    model = None  # lazy loading — model loads only when first file is dropped
 
     while True:
 
@@ -88,33 +90,34 @@ if __name__ == "__main__":
         print(f" Transcriber — Whisper {MODEL_SIZE}", flush=True)
         print("==============================", flush=True)
 
-        raw_input = input("\nArrastrá un video o carpeta acá, o escribí 'exit': ").strip()
+        raw_input = input("\nDrag a video or folder here, or type 'exit': ").strip()
 
         if raw_input.lower() == "exit":
-            print("\n👋 Cerrando programa...")
+            print("\n👋 Closing...")
             break
 
-        path = limpiar_path(raw_input)
+        path = clean_path(raw_input)
 
         if not path.exists():
-            print(f"\n❌ No encontrado: {path}", flush=True)
+            print(f"\n❌ Not found: {path}", flush=True)
             continue
 
-        archivos = resolver_archivos(path)
+        files = resolve_files(path)
 
-        if not archivos:
-            print("\n❌ No se encontraron videos compatibles.", flush=True)
+        if not files:
+            print("\n❌ No compatible media files found.", flush=True)
             continue
 
         if path.is_dir():
-            print(f"\n📁 Carpeta detectada — {len(archivos)} archivo(s) para procesar.", flush=True)
+            print(f"\n📁 Folder detected — {len(files)} file(s) to process.", flush=True)
 
+        # Load model once per session
         if model is None:
             model = cargar_modelo()
 
-        for i, archivo in enumerate(archivos, start=1):
-            if len(archivos) > 1:
-                print(f"\n[{i}/{len(archivos)}]", flush=True)
-            transcribir(archivo, model)
+        for i, file in enumerate(files, start=1):
+            if len(files) > 1:
+                print(f"\n[{i}/{len(files)}]", flush=True)
+            transcribir(file, model)
 
-        print(f"\n✅ Sesión completa. {len(archivos)} archivo(s) procesado(s).", flush=True)
+        print(f"\n✅ Session complete. {len(files)} file(s) processed.", flush=True)

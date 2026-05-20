@@ -6,7 +6,7 @@
 # PATCH — fix de bug
 # =========================
 
-VERSION = "0.1.0"  # alpha
+VERSION = "0.2.0"  # beta
 
 if __name__ == "__main__":
     print(f"Nico Digitals Content Engine — v{VERSION}")
